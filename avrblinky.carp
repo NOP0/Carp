@@ -1,0 +1,23 @@
+
+
+(project-set! "echoCompilationCommand" "true")
+(project-set! "compiler" "avr-gcc-4.9.2 -Os -std=c99 -DF_CPU=16000000UL -mmcu=atmega328p -I../avr-libc-2.0.0/include/" )
+; avr-libc-2.0.0 included because of time.h missing in earlier versions.
+
+(use Int)
+(load "avr.carp")
+
+
+(defn main []
+    (while true
+    (do
+        (setDDRB 255)
+        (delay 500)
+        (setPORTB 32)
+        (delay 500)
+        (setPORTB 0)
+    )))
+
+       
+
+  

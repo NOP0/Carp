@@ -1,0 +1,6 @@
+(local-include "avrhelper.h")
+
+
+(register setDDRB (Fn [Int] ()))
+(register setPORTB (Fn [Int] ()))
+(register delay (Fn [Int] ()))
