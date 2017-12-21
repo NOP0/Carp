@@ -77,7 +77,7 @@ toC root = emitterSrc (execState (visit 0 root) (EmitterState ""))
             Break -> error (show (DontVisitObj Break))
             While -> error (show (DontVisitObj While))
             Do -> error (show (DontVisitObj Do))
-            Typ -> error (show (DontVisitObj Typ))
+            e@(Typ _) -> error (show (DontVisitObj e))
             Mod _ -> error (show CannotEmitModKeyword)
             External -> error (show CannotEmitExternal)
             ExternalType -> error (show (DontVisitObj ExternalType))
@@ -260,7 +260,7 @@ toC root = emitterSrc (execState (visit 0 root) (EmitterState ""))
                  return fresh
 
             -- Deftype
-            XObj Typ _ _ : XObj (Sym _) _ _ : _ ->
+            XObj (Typ _) _ _ : XObj (Sym _) _ _ : _ ->
               return ""
 
             -- Template
@@ -374,11 +374,9 @@ templateToDeclaration template path actualTy =
       tokens = concatMap (concretizeTypesInToken mappings (pathToC path) e) declaration
   in  concatMap show tokens ++ ";\n"
 
-deftypeToDeclaration :: SymPath -> [XObj] -> String
-deftypeToDeclaration path rest =
+deftypeToDeclaration :: Ty -> SymPath -> [XObj] -> String
+deftypeToDeclaration structTy@(StructTy typeName typeVariables) path rest =
   let indent' = indentAmount
-      (SymPath _ typeName) = path
-      --p = (PointerTy (StructTy typeName []))
 
       typedefCaseToMemberDecl :: XObj -> State EmitterState [()]
       typedefCaseToMemberDecl (XObj (Arr members) _ _) = mapM memberToDecl (pairwise members)
@@ -393,9 +391,11 @@ deftypeToDeclaration path rest =
       -- Note: the names of types are not namespaced
       visit = do appendToSrc "typedef struct {\n"
                  _ <- mapM typedefCaseToMemberDecl rest
-                 appendToSrc ("} " ++ typeName ++ ";\n")
+                 appendToSrc ("} " ++ tyToC structTy ++ ";\n")
 
-  in emitterSrc (execState visit (EmitterState ""))
+  in if typeIsGeneric structTy
+     then "" -- ("// " ++ show structTy ++ "\n")
+     else emitterSrc (execState visit (EmitterState ""))
 
 defaliasToDeclaration :: Ty -> SymPath -> String
 defaliasToDeclaration t path =
@@ -413,8 +413,8 @@ toDeclaration xobj@(XObj (Lst xobjs) _ t) =
     [XObj Def _ _, XObj (Sym path) _ _, _] ->
       let Just t' = t
       in "" ++ tyToC t' ++ " " ++ pathToC path ++ ";\n"
-    XObj Typ _ _ : XObj (Sym path) _ _ : rest ->
-      deftypeToDeclaration path rest
+    XObj (Typ t) _ _ : XObj (Sym path) _ _ : rest ->
+      deftypeToDeclaration t path rest
     XObj (Deftemplate _) _ _ : _ ->
       ""
     XObj Macro _ _ : _ ->

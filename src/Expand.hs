@@ -53,6 +53,28 @@ expand eval env xobj =
           do expandedValue <- expand eval env value
              return $ do okValue <- expandedValue
                          Right (XObj (Lst [theExpr, typeXObj, okValue]) i t)
+        [ifExpr@(XObj If _ _), condition, trueBranch, falseBranch] ->
+          do expandedCondition <- expand eval env condition
+             expandedTrueBranch <- expand eval env trueBranch
+             expandedFalseBranch <- expand eval env falseBranch
+             return $ do okCondition <- expandedCondition
+                         okTrueBranch <- expandedTrueBranch
+                         okFalseBranch <- expandedFalseBranch
+                         -- This is a HACK so that each branch of the if statement
+                         -- has a "safe place" (= a do-expression with just one element)
+                         -- where it can store info about its deleters. Without this,
+                         -- An if statement with let-expression inside will duplicate
+                         -- the calls to Delete when emitting code.
+                         let wrappedTrue =
+                               case okTrueBranch of
+                                 XObj (Lst (XObj Do _ _ : _)) _ _ -> okTrueBranch -- Has a do-expression already
+                                 _ -> XObj (Lst [XObj Do Nothing Nothing, okTrueBranch]) (info okTrueBranch) Nothing
+                             wrappedFalse =
+                               case okFalseBranch of
+                                 XObj (Lst (XObj Do _ _ : _)) _ _ -> okFalseBranch -- Has a do-expression already
+                                 _ -> XObj (Lst [XObj Do Nothing Nothing, okFalseBranch]) (info okFalseBranch) Nothing
+
+                         Right (XObj (Lst [ifExpr, okCondition, wrappedTrue, wrappedFalse]) i t)
         [letExpr@(XObj Let _ _), XObj (Arr bindings) bindi bindt, body] ->
           if even (length bindings)
           then do bind <- mapM (\(n, x) -> do x' <- expand eval env x

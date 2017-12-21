@@ -75,10 +75,98 @@ eval env xobj =
                            (XObj (Num IntTy aNum) _ _, XObj (Num IntTy bNum) _ _) ->
                              if (round aNum :: Int) == (round bNum :: Int)
                              then Right trueXObj else Right falseXObj
+                           (XObj (Num LongTy aNum) _ _, XObj (Num LongTy bNum) _ _) ->
+                             if (round aNum :: Int) == (round bNum :: Int)
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num FloatTy aNum) _ _, XObj (Num floatTy bNum) _ _) ->
+                             if aNum == bNum
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num DoubleTy aNum) _ _, XObj (Num DoubleTy bNum) _ _) ->
+                             if aNum == bNum
+                             then Right trueXObj else Right falseXObj
                            (XObj (Str a) _ _, XObj (Str b) _ _) ->
+                             if a == b then Right trueXObj else Right falseXObj
+                           (XObj (Sym a) _ _, XObj (Sym b) _ _) ->
                              if a == b then Right trueXObj else Right falseXObj
                            _ ->
                              Left (EvalError ("Can't compare " ++ pretty okA ++ " with " ++ pretty okB))
+
+        [XObj (Sym (SymPath [] "<")) _ _, a, b] ->
+          do evaledA <- eval env a
+             evaledB <- eval env b
+             return $ do okA <- evaledA
+                         okB <- evaledB
+                         case (okA, okB) of
+                           (XObj (Num IntTy aNum) _ _, XObj (Num IntTy bNum) _ _) ->
+                             if (round aNum :: Int) < (round bNum :: Int)
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num LongTy aNum) _ _, XObj (Num LongTy bNum) _ _) ->
+                             if (round aNum :: Int) < (round bNum :: Int)
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num FloatTy aNum) _ _, XObj (Num floatTy bNum) _ _) ->
+                             if aNum < bNum
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num DoubleTy aNum) _ _, XObj (Num DoubleTy bNum) _ _) ->
+                             if aNum < bNum
+                             then Right trueXObj else Right falseXObj
+                           _ ->
+                             Left (EvalError ("Can't compare (<) " ++ pretty okA ++ " with " ++ pretty okB))
+
+        [XObj (Sym (SymPath [] ">")) _ _, a, b] ->
+          do evaledA <- eval env a
+             evaledB <- eval env b
+             return $ do okA <- evaledA
+                         okB <- evaledB
+                         case (okA, okB) of
+                           (XObj (Num IntTy aNum) _ _, XObj (Num IntTy bNum) _ _) ->
+                             if (round aNum :: Int) > (round bNum :: Int)
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num LongTy aNum) _ _, XObj (Num LongTy bNum) _ _) ->
+                             if (round aNum :: Int) > (round bNum :: Int)
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num FloatTy aNum) _ _, XObj (Num floatTy bNum) _ _) ->
+                             if aNum > bNum
+                             then Right trueXObj else Right falseXObj
+                           (XObj (Num DoubleTy aNum) _ _, XObj (Num DoubleTy bNum) _ _) ->
+                             if aNum > bNum
+                             then Right trueXObj else Right falseXObj
+                           _ ->
+                             Left (EvalError ("Can't compare (>) " ++ pretty okA ++ " with " ++ pretty okB))
+
+
+        [XObj (Sym (SymPath [] "and")) _ _, a, b] ->
+          do evaledA <- eval env a
+             evaledB <- eval env b
+             return $ do okA <- evaledA
+                         okB <- evaledB
+                         case (okA, okB) of
+                           (XObj (Bol ab) _ _, XObj (Bol bb) _ _) ->
+                             if ab && bb
+                             then Right trueXObj else Right falseXObj
+                           _ ->
+                             Left (EvalError ("Can't perform logical operation (and) on " ++ pretty okA ++ " and " ++ pretty okB))
+
+        [XObj (Sym (SymPath [] "or")) _ _, a, b] ->
+          do evaledA <- eval env a
+             evaledB <- eval env b
+             return $ do okA <- evaledA
+                         okB <- evaledB
+                         case (okA, okB) of
+                           (XObj (Bol ab) _ _, XObj (Bol bb) _ _) ->
+                             if ab || bb
+                             then Right trueXObj else Right falseXObj
+                           _ ->
+                             Left (EvalError ("Can't perform logical operation (or) on " ++ pretty okA ++ " and " ++ pretty okB))
+
+        [XObj (Sym (SymPath [] "not")) _ _, a] ->
+          do evaledA <- eval env a
+             return $ do okA <- evaledA
+                         case okA of
+                           XObj (Bol ab) _ _ ->
+                             if ab
+                             then Right falseXObj else Right trueXObj
+                           _ ->
+                             Left (EvalError ("Can't perform logical operation (not) on " ++ pretty okA))
 
         [XObj If _ _, condition, ifTrue, ifFalse] ->
           do evaledCondition <- eval env condition
@@ -265,7 +353,7 @@ folder context xobj =
 executeCommand :: Context -> ReplCommand -> IO Context
 executeCommand ctx@(Context env typeEnv pathStrings proj lastInput execMode) cmd =
   do when (isJust (envModuleName env)) $
-       compilerError ("Global env module name is " ++ fromJust (envModuleName env) ++ " (should be Nothing).")
+       error ("Global env module name is " ++ fromJust (envModuleName env) ++ " (should be Nothing).")
      case cmd of
        ReplEval xobj ->
          do (result, newCtx) <- runStateT (eval env xobj) ctx
@@ -354,6 +442,8 @@ define ctx@(Context globalEnv typeEnv _ proj _ _) annXObj =
   case annXObj of
     XObj (Lst (XObj (Defalias _) _ _ : _)) _ _ ->
       --putStrLnWithColor Yellow (show (getPath annXObj) ++ " : " ++ show annXObj)
+      return (ctx { contextTypeEnv = TypeEnv (envInsertAt (getTypeEnv typeEnv) (getPath annXObj) annXObj) })
+    XObj (Lst (XObj (Typ _) _ _ : _)) _ _ ->
       return (ctx { contextTypeEnv = TypeEnv (envInsertAt (getTypeEnv typeEnv) (getPath annXObj) annXObj) })
     _ ->
       do --putStrLnWithColor Blue (show (getPath annXObj) ++ " : " ++ showMaybeTy (ty annXObj))
@@ -460,7 +550,7 @@ deftypeInternal nameXObj typeName typeVariableXObjs rest =
            Right (typeModuleName, typeModuleXObj, deps) ->
              let typeDefinition =
                    -- NOTE: The type binding is needed to emit the type definition and all the member functions of the type.
-                   XObj (Lst (XObj Typ Nothing Nothing :
+                   XObj (Lst (XObj (Typ (StructTy typeName okTypeVariables)) Nothing Nothing :
                               XObj (Sym (SymPath pathStrings typeName)) Nothing Nothing :
                               rest)
                         ) i (Just TypeTy)
@@ -673,35 +763,6 @@ specialCommandWith xobj path forms =
 
 
 -- | "NORMAL" COMMANDS (just like the ones in Command.hs, but these need access to 'eval', etc.)
-
--- | Command for changing various project settings.
-commandProjectSet :: CommandCallback
-commandProjectSet [XObj (Str key) _ _, value] =
-  do ctx <- get
-     let proj = contextProj ctx
-         env = contextGlobalEnv ctx
-     evaled <- eval env value
-     case evaled of
-       Left e -> err (show e) dynamicNil
-       Right (XObj (Str valueStr) _ _) -> do
-          newCtx <- case key of
-                      "cflag" -> return ctx { contextProj = proj { projectCFlags = addIfNotPresent valueStr (projectCFlags proj) } }
-                      "libflag" -> return ctx { contextProj = proj { projectCFlags = addIfNotPresent valueStr (projectCFlags proj) } }
-                      "prompt" -> return ctx { contextProj = proj { projectPrompt = valueStr } }
-                      "search-path" -> return ctx { contextProj = proj { projectCarpSearchPaths = addIfNotPresent valueStr (projectCarpSearchPaths proj) } }
-                      "printAST" -> return ctx { contextProj = proj { projectPrintTypedAST = (valueStr == "true") } }
-                      "echoC" -> return ctx { contextProj = proj { projectEchoC = (valueStr == "true") } }
-                      "echoCompilationCommand" -> return ctx { contextProj = proj { projectEchoCompilationCommand = (valueStr == "true") } }
-                      "compiler" -> return ctx { contextProj = proj { projectCompiler = valueStr } }
-                      _ -> err ("Unrecognized key: '" ++ key ++ "'") ctx
-          put newCtx
-          return dynamicNil
-       Right val -> err "Argument to project-set! must be a string" dynamicNil
-    where err msg ret = liftIO $ do putStrLnWithColor Red msg
-                                    return ret
-commandProjectSet args =
-  liftIO $ do putStrLnWithColor Red ("Invalid args to 'project-set!' command: " ++ joinWithComma (map pretty args))
-              return dynamicNil
 
 -- | Command for loading a Carp file.
 commandLoad :: CommandCallback

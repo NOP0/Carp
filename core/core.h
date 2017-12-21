@@ -214,9 +214,6 @@ bool String__EQ_(string *a, string *b) {
     return strcmp(*a, *b) == 0;
 }
 
-bool String__DIV__EQ_(string *a, string *b) {
-    return strcmp(*a, *b) == 0;
-}
 string String_append(string a, string b) {
     int la = strlen(a);
     int lb = strlen(b);
@@ -248,6 +245,10 @@ string String_str(string *s) {
     return buffer;
 }
 
+char String_char_MINUS_at(string* s, int i) {
+  return (*s)[i];
+}
+
 Array String_chars(string *s) {
     Array chars;
     chars.len = strlen(*s);
@@ -258,6 +259,20 @@ Array String_chars(string *s) {
 string String_from_MINUS_chars(Array a) {
     string s = CARP_MALLOC(a.len+1);
     snprintf(s, a.len+1, "%s", a.data);
+    return s;
+}
+
+string String_tail(string* s) {
+  int len = strlen(*s);
+  char* news = CARP_MALLOC(len);
+  memcpy(news, (*s)+1, len-1);
+  news[len-1] = '\0';
+  return news;
+}
+
+string String_empty() {
+    string s = CARP_MALLOC(1);
+    s[0] = '\0';
     return s;
 }
 
@@ -542,19 +557,18 @@ string IO_read_MINUS_file(string *filename) {
         if (buffer)	{
             fread (buffer, 1, length, f);
             buffer[length] = '\0';
+        } else {
+            printf("Failed to open buffer from file: %s\n", *filename);
+            buffer = String_empty();    
         }
         fclose (f);
     } else {
         printf("Failed to open file: %s\n", *filename);
-        return "";
+        buffer = String_empty();
     }
 
-    if (buffer) {
-        return buffer;
-    } else {
-        printf("Failed to open buffer from file: %s\n", *filename);
-        return "";
-    }
+
+    return buffer;
 }
 
 #endif

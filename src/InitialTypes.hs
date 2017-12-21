@@ -78,7 +78,7 @@ initialTypes typeEnv rootEnv root = evalState (visit rootEnv root) 0
                        While              -> return (Left (InvalidObj While xobj))
                        Do                 -> return (Left (InvalidObj Do xobj))
                        (Mod _)            -> return (Left (InvalidObj If xobj))
-                       Typ                -> return (Left (InvalidObj Typ xobj))
+                       e@(Typ _)          -> return (Left (InvalidObj e xobj))
                        External           -> return (Left (InvalidObj External xobj))
                        ExternalType       -> return (Left (InvalidObj ExternalType xobj))
                        e@(Deftemplate _)  -> return (Left (InvalidObj e xobj))
@@ -129,7 +129,7 @@ initialTypes typeEnv rootEnv root = evalState (visit rootEnv root) 0
          return $ do okVisited <- sequence visited
                      Right (XObj (Arr okVisited) i (Just (StructTy "Array" [arrayVarTy])))
 
-    visitArray _ _ = compilerError "The function 'visitArray' only accepts XObj:s with arrays in them."
+    visitArray _ _ = error "The function 'visitArray' only accepts XObj:s with arrays in them."
 
     visitList :: Env -> XObj -> State Integer (Either TypeError XObj)
     visitList env xobj@(XObj (Lst xobjs) i _) =
@@ -190,7 +190,11 @@ initialTypes typeEnv rootEnv root = evalState (visit rootEnv root) 0
              return $ do okExpr <- visitedExpr
                          okTrue <- visitedTrue
                          okFalse <- visitedFalse
-                         return (XObj (Lst [ifExpr, okExpr, okTrue, okFalse]) i (Just returnType))
+                         return (XObj (Lst [ifExpr
+                                           ,okExpr
+                                           ,okTrue
+                                           ,okFalse
+                                           ]) i (Just returnType))
 
         XObj If _ _ : _ -> return (Left (InvalidObj If xobj))
 
@@ -258,7 +262,7 @@ initialTypes typeEnv rootEnv root = evalState (visit rootEnv root) 0
         -- Empty list
         [] -> return (Right xobj { ty = Just UnitTy })
 
-    visitList _ _ = compilerError "Must match on list!"
+    visitList _ _ = error "Must match on list!"
 
     extendEnvWithLetBindings :: Env -> [XObj] -> State Integer (Either TypeError Env)
     extendEnvWithLetBindings env xobjs =

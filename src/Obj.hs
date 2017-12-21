@@ -28,7 +28,7 @@ data Obj = Sym SymPath
          | Break
          | If
          | Mod Env
-         | Typ
+         | Typ Ty
          | With
          | External
          | ExternalType
@@ -116,7 +116,7 @@ getBinderDescription (XObj (Lst (XObj (Instantiate _) _ _ : XObj (Sym _) _ _ : _
 getBinderDescription (XObj (Lst (XObj (Defalias _) _ _ : XObj (Sym _) _ _ : _)) _ _) = "alias"
 getBinderDescription (XObj (Lst (XObj External _ _ : XObj (Sym _) _ _ : _)) _ _) = "external"
 getBinderDescription (XObj (Lst (XObj ExternalType _ _ : XObj (Sym _) _ _ : _)) _ _) = "external-type"
-getBinderDescription (XObj (Lst (XObj Typ _ _ : XObj (Sym _) _ _ : _)) _ _) = "deftype"
+getBinderDescription (XObj (Lst (XObj (Typ _) _ _ : XObj (Sym _) _ _ : _)) _ _) = "deftype"
 getBinderDescription (XObj (Lst (XObj (Interface _ _) _ _ : XObj (Sym _) _ _ : _)) _ _) = "interface"
 getBinderDescription _ = "?"
 
@@ -145,7 +145,7 @@ setPath (XObj (Lst (defn@(XObj Defn _ _) : XObj (Sym _) si st : rest)) i t) newP
 setPath (XObj (Lst [extr@(XObj External _ _), XObj (Sym _) si st]) i t) newPath =
   XObj (Lst [extr, XObj (Sym newPath) si st]) i t
 setPath x _ =
-  compilerError ("Can't set path on " ++ show x)
+  error ("Can't set path on " ++ show x)
 
 -- | Convert an XObj to a pretty string representation.
 pretty :: XObj -> String
@@ -159,7 +159,7 @@ pretty = visit 0
             Num LongTy num -> show num ++ "l"
             Num FloatTy num -> show num ++ "f"
             Num DoubleTy num -> show num
-            Num _ _ -> compilerError "Invalid number type."
+            Num _ _ -> error "Invalid number type."
             Str str -> show str
             Chr c -> '\\' : c : ""
             Sym path -> show path
@@ -173,7 +173,7 @@ pretty = visit 0
             Do -> "do"
             Let -> "let"
             Mod env -> fromMaybe "module" (envModuleName env)
-            Typ -> "deftype"
+            Typ _ -> "deftype"
             Deftemplate _ -> "deftemplate"
             Instantiate _ -> "instantiate"
             External -> "external"
@@ -206,7 +206,8 @@ prettyTyped :: XObj -> String
 prettyTyped = visit 0
   where visit :: Int -> XObj -> String
         visit indent xobj =
-          let suffix = typeStr xobj ++ ", id = " ++ show (fmap infoIdentifier (info xobj)) ++ "\n"
+          let suffix = typeStr xobj ++ ", id = " ++ show (fmap infoIdentifier (info xobj)) ++ " " ++
+                show (fmap (joinWithComma . map show . (Set.toList) . infoDelete) (info xobj)) ++ "\n"
           in case obj xobj of
                Lst lst -> "(" ++ joinWithSpace (map (visit indent) lst) ++ ")" ++ suffix
                Arr arr -> "[" ++ joinWithSpace (map (visit indent) arr) ++ "]" ++ suffix
@@ -234,17 +235,17 @@ showBinderIndented indent (name, Binder xobj) =
 -- | The score is used for sorting the bindings before emitting them.
 -- | A lower score means appearing earlier in the emitted file.
 scoreBinder :: TypeEnv -> Binder -> (Int, Binder)
-scoreBinder typeEnv b@(Binder (XObj (Lst (XObj x _ _ : XObj (Sym (SymPath _ name)) _ _ : _)) _ _)) =
+scoreBinder typeEnv b@(Binder (XObj (Lst (XObj x _ _ : XObj (Sym _) _ _ : _)) _ _)) =
   case x of
     Defalias aliasedType ->
       let selfName = ""
       in  (depthOfType typeEnv selfName (Just aliasedType), b)
-    Typ ->
-      case lookupInEnv (SymPath [] name) (getTypeEnv typeEnv) of
+    Typ (StructTy structName _) ->
+      case lookupInEnv (SymPath [] structName) (getTypeEnv typeEnv) of
         Just (_, Binder typedef) -> let depth = (dependencyDepthOfTypedef typeEnv typedef, b)
                                     in  --trace ("depth of " ++ name ++ ": " ++ show depth)
                                         depth
-        Nothing -> compilerError ("Can't find user defined type '" ++ name ++ "' in type env.")
+        Nothing -> error ("Can't find user defined type '" ++ structName ++ "' in type env.")
     _ ->
       (100, b)
 scoreBinder _ b@(Binder (XObj (Mod _) _ _)) =
@@ -259,9 +260,9 @@ dependencyDepthOfTypedef typeEnv (XObj (Lst (_ : XObj (Sym (SymPath _ selfName))
   where
     expandCase :: XObj -> [Int]
     expandCase (XObj (Arr arr) _ _) = map (depthOfType typeEnv selfName . xobjToTy . snd) (pairwise arr)
-    expandCase _ = compilerError "Malformed case in typedef."
+    expandCase _ = error "Malformed case in typedef."
 dependencyDepthOfTypedef _ xobj =
-  compilerError ("Can't get dependency depth from " ++ show xobj)
+  error ("Can't get dependency depth from " ++ show xobj)
 
 depthOfType :: TypeEnv -> String -> Maybe Ty -> Int
 depthOfType typeEnv selfName = visitType
@@ -784,7 +785,7 @@ isManaged typeEnv (StructTy name _) =
   (name == "Array") || (
     case lookupInEnv (SymPath [] name) (getTypeEnv typeEnv) of
          Just (_, Binder (XObj (Lst (XObj ExternalType _ _ : _)) _ _)) -> False
-         Just (_, Binder (XObj (Lst (XObj Typ _ _ : _)) _ _)) -> True
+         Just (_, Binder (XObj (Lst (XObj (Typ _) _ _ : _)) _ _)) -> True
          Just (_, Binder (XObj wrong _ _)) -> error ("Invalid XObj in type env: " ++ show wrong)
          Nothing -> error ("Can't find " ++ name ++ " in type env."))
 isManaged _ StringTy = True
